@@ -21,7 +21,7 @@ jobs:
           usesh: true
 
           prepare: |
-            pkg install build-essential gcc14 gcc51
+            pkg install build-essential gcc14 developer/gcc51
 
           run: |
             # 1. Setup local IPS repo
