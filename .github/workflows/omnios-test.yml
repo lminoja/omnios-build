@@ -1,0 +1,63 @@
+name: Build and Package
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  release:
+    types: [created]   # attach .p5p to a GitHub Release automatically
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build package in OmniOS VM
+        uses: vmactions/omnios-vm@v1
+        with:
+          release: "r151056"
+          mem: 6144
+          usesh: true
+
+          prepare: |
+            pkg install build-essential gcc14
+
+          run: |
+            # 1. Setup local IPS repo
+            pkgrepo create /tmp/my-repo
+            pkgrepo set -s /tmp/my-repo publisher/prefix=my.publisher
+
+            # 2. Configure build system
+            cat >> lib/site.sh << 'EOF'
+            PKGSRVR=file:///tmp/my-repo
+            PKGPUBLISHER=my.publisher
+            TMPDIR=/tmp/build
+            ROOT_OK=1
+            EOF
+            mkdir -p /tmp/build
+
+            # 3. Build the package
+            cd build && ./buildctl build curl
+
+            # 4. Export .p5p from the local repo
+            #    This picks up ALL packages published during the build
+            pkgrecv -s file:///tmp/my-repo \
+                    -d /tmp/output/curl.p5p \
+                    --all-versions \
+                    -a '*'
+
+      # 5. Upload as a workflow artifact (available for ~90 days, downloadable from Actions UI)
+      - name: Upload .p5p artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: curl-p5p
+          path: /tmp/output/curl.p5p
+
+      # 6. Attach to a GitHub Release if this was triggered by one
+      - name: Attach to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: /tmp/output/curl.p5p
+```
